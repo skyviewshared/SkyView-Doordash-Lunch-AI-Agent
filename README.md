@@ -86,3 +86,11 @@ Review the summary, reply **"confirm"**, and the agent hands off to checkout. Pa
 | Chrome | Any modern version |
 | DoorDash | Active account required |
 
+
+---
+
+## Author
+
+**Srotriyo Sengupta** — SkyView Investment Advisors
+
+© 2026 Srotriyo Sengupta. All rights reserved.
