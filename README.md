@@ -6,10 +6,12 @@ A Claude Code custom agent that automates DoorDash group orders. Tell it what ev
 
 | Backend | Speed | Platform | Requirements |
 |---------|-------|----------|--------------|
-| **DoorDash CLI** (`dd-cli`) — preferred | ~30–60s per group order | macOS (Apple Silicon) | [Beta-approved account](https://github.com/doordash-oss/doordash-cli) |
+| **DoorDash CLI** (`dd-cli`) — preferred | **1–2 min** (sometimes under 1 min) | macOS (Apple Silicon), Linux x86_64, Windows via WSL2 | [Beta-approved account](https://github.com/doordash-oss/doordash-cli) |
 | **Browser automation** — fallback | ~2–7 min | Windows / macOS / Linux | Chrome + Claude in Chrome extension |
 
 The agent auto-detects `dd-cli` and uses it when available; otherwise it drives DoorDash through Chrome. Either way, **it never submits an order without your explicit confirmation.**
+
+CLI timings are measured on real multi-person orders (macOS, August 2026).
 
 ---
 
@@ -36,12 +38,16 @@ The agent auto-detects `dd-cli` and uses it when available; otherwise it drives 
 
 That's it. No API keys, no config files, no environment variables.
 
-### Optional: enable the fast dd-cli backend (macOS Apple Silicon)
+### Recommended: enable the fast dd-cli backend
+
+Supported on **macOS (Apple Silicon)**, **Linux x86_64**, and **Windows via WSL2** (install it inside your WSL distro).
 
 1. Get beta access to the [DoorDash CLI](https://github.com/doordash-oss/doordash-cli) (waitlist approval required)
-2. Download the latest `dd-cli-v<version>-darwin-arm64.tar.gz` from the [Releases page](https://github.com/doordash-oss/doordash-cli/releases), verify the SHA256 checksum, and extract per the bundled `quickstart.txt`
-3. Make sure `dd-cli` is on your `PATH`, then run `dd-cli login`
+2. Grab the latest release from the [Releases page](https://github.com/doordash-oss/doordash-cli/releases) — `install.sh` works on both Linux and macOS. Verify the SHA256 checksum before extracting.
+3. Make sure `dd-cli` is on your `PATH`, then `dd-cli login`. In headless environments (containers, CI, WSL without keychain access) set `DD_CLI_ACCESS_TOKEN` instead — it takes precedence over the keychain.
 4. Done — the agent detects it automatically and switches to CLI ordering (browser stays as fallback)
+
+**Note on v0.2.2+:** every tool-backed command requires an `--intent "<who + goal>"` argument or it errors. The agent supplies this automatically; if you script `dd-cli` yourself, remember to include it.
 
 ---
 
@@ -94,7 +100,7 @@ Review the summary, reply **"confirm"**, and the agent hands off to checkout. Pa
 | File | Purpose |
 |------|---------|
 | `lunch-order-agent.md` | Agent definition — install in `~/.claude/agents/` |
-| `skills/lunch-order/SKILL.md` | Skill trigger — install the folder as `~/.claude/skills/lunch-order/` |
+| `skills/lunch-order/SKILL.md` | Skill trigger — install the folder as `~/.claude/skills` |
 
 ---
 
