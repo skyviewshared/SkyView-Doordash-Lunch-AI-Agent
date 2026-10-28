@@ -70,9 +70,22 @@ Never omit it. If a command fails with an intent-related error, add or reword `-
 
 ### Phase 3-Browser: Add items via browser automation (fallback)
 
-The entire add-to-cart flow is pure JavaScript — zero screenshots, zero `computer` clicks, zero `computer` scrolls. Batch several items into each `javascript_tool` call.
+The add-to-cart flow is JavaScript-first — prefer `javascript_tool` over screenshots and mouse work, and batch several items into each call. But see the trusted-click rule below: on current DoorDash store pages, opening an item card needs a real click.
 
 **Store-variant warning (learned July 2026):** some stores (e.g. Toast, Red Bank NJ) ignore JS scrolling entirely — their menu only mounts on trusted `computer scroll` events, and their sidebar nav mimics content headings. If two harvest passes return 0 items, switch immediately to `computer scroll down 3` navigation (v1 style) and keep the JS-only pattern for modal open + option select + add, which works everywhere.
+
+#### ⚠️ DoorDash store-page rules (verified live, Oct 2026 — Juanitos, Red Bank NJ)
+
+A full test run found four behaviours that break the naive JS-only path. Follow these or the run stalls:
+
+1. **Check the delivery address BEFORE adding anything.** The account's default address may not be the office. Juanitos showed "27.2 mi away / Unavailable / Too far away" and the first add-to-cart was intercepted by an "Enter your delivery address" modal that silently discarded the item. Read the address button in the header first; if it isn't the office, open it, pick the right saved address, and **reload the store page** — availability and the menu only re-resolve on reload. Confirm the header shows a sane distance and ETA before the first add.
+2. **Item cards need a trusted click, not a JS click.** `element.click()` opens the modal for Featured Items cards only. For ordinary section cards it does nothing. Get the card's centre with `getBoundingClientRect()` via `javascript_tool`, then open it with `computer left_click` at those coordinates. Everything *inside* the modal (option labels, Add to cart) still responds to JS clicks, so keep using JS there.
+3. **Sidebar category links don't scroll via JS either.** Clicking "House Specials" in the nav with JS does nothing, and the target section stays unmounted. Use `computer scroll` to walk to the section, then re-query. Sections mount only when near the viewport, so an item is "not mounted" until you have scrolled to it.
+4. **Scope item lookup to menu containers.** Searching page text for an item name hits customer reviews first — "Mini Burrito" and "Taco Salad" both matched review prose before the menu card. Always query within `[data-anchor-id="MenuItem"]` and match the card's `h3`, never free text over `document.body`.
+
+Working pattern per item: JS to locate the card's rect → `computer left_click` on it → JS to select options and click Add to cart → JS to read the cart count. Verify the count increments; a silent no-op means the card never opened.
+
+**Known-good selectors (Oct 2026):** item card `[data-anchor-id="MenuItem"]` wrapping `[data-testid="GenericItemCard"]`, title in `h3`, modal `[role="dialog"]`, options as `label` / `[role="radio"]` / `[role="checkbox"]`, submit button matching `/add to cart/i`, cart opener `button[aria-label*="Order Cart" i]`. A required-selection modal shows "Make N required selections" instead of "Add to cart" — treat that as options-not-yet-satisfied, not as a failure.
 
 ## Personality
 - Friendly and efficient — this is a routine office task, keep it smooth
@@ -290,6 +303,12 @@ Then ask: **"Ready to place this order? Reply 'confirm' to proceed or 'cancel' t
 | `Promise was collected` JS error | Page re-rendered mid-call. Re-run a short status call (`modal open? cart count?`) to see what landed, then continue — do not blindly repeat the add |
 | CDP timeout (45s) | Your JS call had too many awaits. Split the batch. Status-check before continuing |
 | CAPTCHA / login wall | Pause, ask user to resolve in browser, wait for "done" |
+| "Enter your delivery address" modal on first add | Wrong/!default address. Set the office address, reload the store page, re-add. The intercepted item was NOT added |
+| Store shows "Unavailable" / "Too far away" | Active address is wrong — fix it before touching the menu, not after |
+| JS `.click()` on an item card does nothing | Expected outside Featured Items. Get the rect via JS, open with `computer left_click` |
+| Item "not mounted" after a JS section jump | Sidebar links don't scroll via JS. Use `computer scroll` to the section, then re-query |
+| Item name matches a customer review | Scope the query to `[data-anchor-id="MenuItem"] h3`, never `document.body` text |
+| Modal shows "Make N required selections" | Required options unselected — pick them, then the button becomes "Add to cart" |
 | dd-cli older than 0.2.6 | Ask the user to upgrade (older versions may break per DoorDash); offer browser backend for today |
 | dd-cli `error.code` = authentication | `dd-cli login` (or re-export `DD_CLI_ACCESS_TOKEN`), retry the command once |
 | dd-cli `error.code` = rate-limit / timeout | Back off (30s / 5s) and retry once; for `order submit` check `order status` first — submit is not idempotent |
