@@ -6,7 +6,7 @@ A Claude Code custom agent that automates DoorDash group orders. Tell it what ev
 
 | Backend | Speed | Platform | Requirements |
 |---------|-------|----------|--------------|
-| **DoorDash CLI** (`dd-cli`) — preferred | **1–2 min** (sometimes under 1 min) | macOS (Apple Silicon), Linux x86_64, Windows via WSL2 | [Beta-approved account](https://github.com/doordash-oss/doordash-cli) |
+| **DoorDash CLI** (`dd-cli`) — preferred | **1–2 min** (sometimes under 1 min) | macOS (Apple Silicon), Linux x86_64, Windows via WSL2 | [Beta-approved account](https://github.com/doordash-oss/doordash-cli) + dd-cli **v0.2.6 or later** |
 | **Browser automation** — fallback | ~2–7 min | Windows / macOS / Linux | Chrome + Claude in Chrome extension |
 
 The agent auto-detects `dd-cli` and uses it when available; otherwise it drives DoorDash through Chrome. Either way, **it never submits an order without your explicit confirmation.**
@@ -43,11 +43,27 @@ That's it. No API keys, no config files, no environment variables.
 Supported on **macOS (Apple Silicon)**, **Linux x86_64**, and **Windows via WSL2** (install it inside your WSL distro).
 
 1. Get beta access to the [DoorDash CLI](https://github.com/doordash-oss/doordash-cli) (waitlist approval required)
-2. Grab the latest release from the [Releases page](https://github.com/doordash-oss/doordash-cli/releases) — `install.sh` works on both Linux and macOS. Verify the SHA256 checksum before extracting.
-3. Make sure `dd-cli` is on your `PATH`, then `dd-cli login`. In headless environments (containers, CI, WSL without keychain access) set `DD_CLI_ACCESS_TOKEN` instead — it takes precedence over the keychain.
+2. Grab the latest release from the [Releases page](https://github.com/doordash-oss/doordash-cli/releases) — `dd-cli-v<version>-darwin-arm64.tar.gz` for macOS or `dd-cli-v<version>-linux-amd64.tar.gz` for Linux/WSL2 (`install.sh` works on both). Verify the SHA256 checksum before extracting.
+3. Make sure `dd-cli` is on your `PATH`, then `dd-cli login`. For a remote or headless machine (container, CI, WSL without keychain access) either run `dd-cli login --start` / `dd-cli login --finish` (two-step remote sign-in, v0.2.6+) or run `dd-cli export-token` on a signed-in machine and set the result as `DD_CLI_ACCESS_TOKEN` — the env var takes precedence over the keychain. `export-token` also prints when the token expires.
 4. Done — the agent detects it automatically and switches to CLI ordering (browser stays as fallback)
 
-**Note on v0.2.2+:** every tool-backed command requires an `--intent "<who + goal>"` argument or it errors. The agent supplies this automatically; if you script `dd-cli` yourself, remember to include it.
+**Upgrade to v0.2.6 (October 2026).** DoorDash warns that workflows on older dd-cli versions may break, so the agent checks `dd-cli --version` on every run and asks you to upgrade if it finds anything older than 0.2.6. Upgrading is just steps 2–3 again; your login carries over.
+
+**What changed since the v0.2.2 docs** (v0.2.3 → v0.2.6), and how the agent uses it:
+
+| Area | Change | Used by the agent? |
+|------|--------|--------------------|
+| Payment | Pick a saved card with `payment-method set`, or pass `--card-id` on an ASAP order | Yes — the order summary shows which card will be charged; say "use the Amex" to switch |
+| Errors | Failed commands return a categorized exit code and an `error.code` (auth, availability, timeout, rate-limit, tool) | Yes — the agent retries, re-authenticates, or falls back to the browser based on the category |
+| Search | Facets: `--dashpass-only`, `--price-tier`, `--distance-preference`, `--max-eta-minutes`; `--address-id` to search from a saved address; `find-item-across-retailers` | Yes — store lookup runs from the office address |
+| Cart | Weight-priced items; merchant-default modifiers with `default_handling: "exact"` to pin exact selections | Yes — exact mode when someone specifies every option |
+| Orders | `order status` follows the full lifecycle (ETA, cancellation reason); `order history --include-group-order` | Yes — the agent polls status until the order is placed |
+| Auth | macOS keychain keeps a refresh token (fewer re-logins); two-step remote sign-in; token expiry shown | Yes |
+| DoubleDash | Discover and add eligible add-on items to an order just placed | Only if you ask after the order is in |
+| Courier | Point-to-point pickup and drop-off | No — not a lunch feature |
+| DoorDash for Business | `ddfb team add-members` / `remove-members`; Meal Manager calendar discovery | No — unless the firm moves lunch onto a DoorDash for Business budget |
+
+**`--intent` is still mandatory** (since v0.2.2): every tool-backed command requires `--intent "<who + goal>"` or it errors. The agent supplies this automatically; if you script `dd-cli` yourself, remember to include it.
 
 ---
 
@@ -82,7 +98,10 @@ The agent will:
 
 ### Step 4 — Confirm and pay
 
-Review the summary, reply **"confirm"**, and the agent hands off to checkout. Payment and final submission are always done by you.
+Review the summary, reply **"confirm"**, and the agent hands off to checkout.
+
+- **Browser backend:** payment and final submission are always done by you in Chrome.
+- **dd-cli backend:** the summary names the saved card that will be charged (your DoorDash default unless you say otherwise). Only after you reply "confirm" does the agent run `order submit`, and it then reports the confirmation number and ETA from `order status`. The agent never adds a new card — do that in the DoorDash app.
 
 ---
 
@@ -109,8 +128,9 @@ Review the summary, reply **"confirm"**, and the agent hands off to checkout. Pa
 | Tool | Version |
 |------|---------|
 | Claude Code | Latest |
-| Claude in Chrome MCP | Latest |
-| Chrome | Any modern version |
+| DoorDash CLI (`dd-cli`) | v0.2.6 or later (optional, preferred backend) |
+| Claude in Chrome MCP | Latest (browser fallback) |
+| Chrome | Any modern version (browser fallback) |
 | DoorDash | Active account required |
 
 ---
